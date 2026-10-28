@@ -1,0 +1,14 @@
+{
+    "download-dir": "@RUN_HOME@/torrents/transmission/downloads",
+    "incomplete-dir": "@RUN_HOME@/torrents/transmission/incomplete",
+    "incomplete-dir-enabled": true,
+    "watch-dir": "@RUN_HOME@/torrents/transmission/torrents",
+    "watch-dir-enabled": true,
+    "rpc-enabled": true,
+    "rpc-bind-address": "0.0.0.0",
+    "rpc-port": 9091,
+    "rpc-authentication-required": false,
+    "rpc-whitelist-enabled": true,
+    "rpc-whitelist": "10.99.1.1",
+    "rpc-host-whitelist-enabled": false
+}

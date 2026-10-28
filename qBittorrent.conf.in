@@ -1,0 +1,6 @@
+[Preferences]
+WebUI\Port=8080
+WebUI\Address=0.0.0.0
+WebUI\LocalHostAuth=false
+WebUI\AuthSubnetWhitelistEnabled=true
+WebUI\AuthSubnetWhitelist=10.99.0.1/32

@@ -1,0 +1,49 @@
+[Unit]
+Description=qBittorrent (isolated in netns) - WebUI: http://qbittorrent:8080 (http://10.99.0.2:8080)
+After=network-online.target
+Wants=network-online.target
+Conflicts=torrent-t.service
+
+[Service]
+Type=simple
+# Lets qbittorrent-nox's own sd_notify STATUS updates show in `systemctl status`.
+NotifyAccess=all
+#Environment=XDG_DATA_DIRS=/usr/local/share:/usr/share
+# Self-heal: wipe any leftovers from a prior crash/unclean stop before (re)starting.
+ExecStartPre=-/usr/sbin/ip netns del torrent-qb
+ExecStartPre=-/usr/sbin/ip link del host-mgmt-qb
+# Refuse to start if another interface already uses this tunnel's peer identity
+# (same vps.conf reused elsewhere) - the VPS would see duplicate/colliding peers.
+ExecStartPre=/bin/sh -c 'for i in $(ip -o link show type @LINKTYPE@ | cut -d: -f2 | tr -d " "); do [ "$(@TOOL@ show "$i" public-key 2>/dev/null)" = "@VPS_PUBKEY@" ] && { echo "refusing to start: interface $i already uses this peer identity" >&2; exit 1; }; done; exit 0'
+ExecStartPre=/usr/sbin/ip netns add torrent-qb
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip link set lo up
+# Create and configure the wg/awg interface in the root namespace, then move it in:
+# its transport socket binds to whatever netns it was *created* in, not the one
+# it currently lives in (see wireguard.com/netns). This is also why we can't use
+# (a)wg-quick, which does create+configure+address in one shot.
+ExecStartPre=/usr/sbin/ip link add vps type @LINKTYPE@
+ExecStartPre=@TOOL@ setconf vps /etc/tunneled-torrents/vps.conf
+ExecStartPre=/usr/sbin/ip link set vps netns torrent-qb
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip addr add @VPS_ADDR@ dev vps
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip link set vps up
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip route add default dev vps
+# veth pair for host <-> netns access to the WebUI (not routed through the tunnel).
+ExecStartPre=/usr/sbin/ip link add host-mgmt-qb type veth peer name ns-mgmt-qb
+ExecStartPre=/usr/sbin/ip link set ns-mgmt-qb netns torrent-qb
+ExecStartPre=/usr/sbin/ip addr add 10.99.0.1/30 dev host-mgmt-qb
+ExecStartPre=/usr/sbin/ip link set host-mgmt-qb up
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip addr add 10.99.0.2/30 dev ns-mgmt-qb
+ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip link set ns-mgmt-qb up
+# Best-effort egress check (ignore failure): confirms traffic leaves via the VPS.
+ExecStartPre=-/usr/sbin/ip netns exec torrent-qb curl -4 -fsS --max-time 5 https://ifconfig.me
+#ExecStartPre=-/usr/sbin/ip netns exec torrent-qb ping -c 1 -W 3 9.9.9.9
+# -p/--preserve-environment: runuser opens a fresh PAM session by default, which
+# wipes the environment systemd set up (incl. XDG vars); without -p, qBittorrent's
+# MIME lookup breaks and the WebUI gets served as a download instead of a page.
+ExecStart=/usr/sbin/ip netns exec torrent-qb /sbin/runuser -p -u @RUN_USER@ -- /usr/bin/qbittorrent-nox --profile=@RUN_HOME@/torrents
+ExecStopPost=/usr/sbin/ip link del host-mgmt-qb
+ExecStopPost=/usr/sbin/ip netns del torrent-qb
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

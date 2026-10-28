@@ -1,0 +1,47 @@
+[Unit]
+Description=Transmission (isolated in netns) - WebUI: http://transmission:9091 (http://10.99.1.2:9091)
+After=network-online.target
+Wants=network-online.target
+Conflicts=torrent-q.service
+
+[Service]
+Type=simple
+# Lets transmission-daemon's own sd_notify STATUS updates show in `systemctl status`.
+NotifyAccess=all
+# Self-heal: wipe any leftovers from a prior crash/unclean stop before (re)starting.
+ExecStartPre=-/usr/sbin/ip netns del torrent-tr
+ExecStartPre=-/usr/sbin/ip link del host-mgmt-tr
+# Refuse to start if another interface already uses this tunnel's peer identity
+# (same vps.conf reused elsewhere) - the VPS would see duplicate/colliding peers.
+ExecStartPre=/bin/sh -c 'for i in $(ip -o link show type @LINKTYPE@ | cut -d: -f2 | tr -d " "); do [ "$(@TOOL@ show "$i" public-key 2>/dev/null)" = "@VPS_PUBKEY@" ] && { echo "refusing to start: interface $i already uses this peer identity" >&2; exit 1; }; done; exit 0'
+ExecStartPre=/usr/sbin/ip netns add torrent-tr
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip link set lo up
+# Create and configure the wg/awg interface in the root namespace, then move it in:
+# its transport socket binds to whatever netns it was *created* in, not the one
+# it currently lives in (see wireguard.com/netns). This is also why we can't use
+# (a)wg-quick, which does create+configure+address in one shot.
+ExecStartPre=/usr/sbin/ip link add vps type @LINKTYPE@
+ExecStartPre=@TOOL@ setconf vps /etc/tunneled-torrents/vps.conf
+ExecStartPre=/usr/sbin/ip link set vps netns torrent-tr
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip addr add @VPS_ADDR@ dev vps
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip link set vps up
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip route add default dev vps
+# veth pair for host <-> netns access to the WebUI (not routed through the tunnel).
+ExecStartPre=/usr/sbin/ip link add host-mgmt-tr type veth peer name ns-mgmt-tr
+ExecStartPre=/usr/sbin/ip link set ns-mgmt-tr netns torrent-tr
+ExecStartPre=/usr/sbin/ip addr add 10.99.1.1/30 dev host-mgmt-tr
+ExecStartPre=/usr/sbin/ip link set host-mgmt-tr up
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip addr add 10.99.1.2/30 dev ns-mgmt-tr
+ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip link set ns-mgmt-tr up
+# Best-effort egress check (ignore failure): confirms traffic leaves via the VPS.
+ExecStartPre=-/usr/sbin/ip netns exec torrent-tr curl -4 -fsS --max-time 5 https://ifconfig.me
+#ExecStartPre=-/usr/sbin/ip netns exec torrent-tr ping -c 1 -W 3 9.9.9.9
+# -p/--preserve-environment: runuser opens a fresh PAM session by default, which
+# wipes the environment systemd set up for the service.
+ExecStart=/usr/sbin/ip netns exec torrent-tr /sbin/runuser -p -u @RUN_USER@ -- /usr/bin/transmission-daemon --foreground --config-dir @RUN_HOME@/torrents/transmission
+ExecStopPost=/usr/sbin/ip link del host-mgmt-tr
+ExecStopPost=/usr/sbin/ip netns del torrent-tr
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
