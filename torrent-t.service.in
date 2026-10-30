@@ -33,12 +33,15 @@ ExecStartPre=/usr/sbin/ip addr add 10.99.1.1/30 dev host-mgmt-tr
 ExecStartPre=/usr/sbin/ip link set host-mgmt-tr up
 ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip addr add 10.99.1.2/30 dev ns-mgmt-tr
 ExecStartPre=/usr/sbin/ip netns exec torrent-tr ip link set ns-mgmt-tr up
+# Lock the mgmt veth down: no forwarding through it, WebUI port only (see script).
+ExecStartPre=/usr/local/lib/tunneled-torrents/mgmt-fw.sh up host-mgmt-tr 9091
 # Best-effort egress check (ignore failure): confirms traffic leaves via the VPS.
 ExecStartPre=-/usr/sbin/ip netns exec torrent-tr curl -4 -fsS --max-time 5 https://ifconfig.me
 #ExecStartPre=-/usr/sbin/ip netns exec torrent-tr ping -c 1 -W 3 9.9.9.9
 # -p/--preserve-environment: runuser opens a fresh PAM session by default, which
 # wipes the environment systemd set up for the service.
 ExecStart=/usr/sbin/ip netns exec torrent-tr /sbin/runuser -p -u @RUN_USER@ -- /usr/bin/transmission-daemon --foreground --config-dir @RUN_HOME@/torrents/transmission
+ExecStopPost=/usr/local/lib/tunneled-torrents/mgmt-fw.sh down host-mgmt-tr 9091
 ExecStopPost=/usr/sbin/ip link del host-mgmt-tr
 ExecStopPost=/usr/sbin/ip netns del torrent-tr
 Restart=on-failure

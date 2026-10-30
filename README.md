@@ -7,6 +7,7 @@ Make sure all torrents-related traffic goes through the tunnel.
 - `transmission-daemon` and/or `qbittorrent-nox` installed.
 - `awg` (AmneziaWG) or `wg` (WireGuard) installed at `/usr/bin/awg` or `/usr/bin/wg`.
 - `curl` installed.
+- `iptables` installed.
 
 ## Usage
 
@@ -26,6 +27,10 @@ Make sure all torrents-related traffic goes through the tunnel.
 
 - qBittorrent: `~/torrents/qBittorrent/`
 - Transmission: `~/torrents/transmission/`
+
+## Uninstall
+
+Run `sudo ./uninstall.sh`. It stops the services and removes everything `install.sh` added (units, tunnel config, helper script, DNS files, `/etc/hosts` lines). Your data in `~/torrents` stays.
 
 ## Troubleshooting
 

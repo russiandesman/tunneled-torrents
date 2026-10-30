@@ -34,6 +34,8 @@ ExecStartPre=/usr/sbin/ip addr add 10.99.0.1/30 dev host-mgmt-qb
 ExecStartPre=/usr/sbin/ip link set host-mgmt-qb up
 ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip addr add 10.99.0.2/30 dev ns-mgmt-qb
 ExecStartPre=/usr/sbin/ip netns exec torrent-qb ip link set ns-mgmt-qb up
+# Lock the mgmt veth down: no forwarding through it, WebUI port only (see script).
+ExecStartPre=/usr/local/lib/tunneled-torrents/mgmt-fw.sh up host-mgmt-qb 8080
 # Best-effort egress check (ignore failure): confirms traffic leaves via the VPS.
 ExecStartPre=-/usr/sbin/ip netns exec torrent-qb curl -4 -fsS --max-time 5 https://ifconfig.me
 #ExecStartPre=-/usr/sbin/ip netns exec torrent-qb ping -c 1 -W 3 9.9.9.9
@@ -41,6 +43,7 @@ ExecStartPre=-/usr/sbin/ip netns exec torrent-qb curl -4 -fsS --max-time 5 https
 # wipes the environment systemd set up (incl. XDG vars); without -p, qBittorrent's
 # MIME lookup breaks and the WebUI gets served as a download instead of a page.
 ExecStart=/usr/sbin/ip netns exec torrent-qb /sbin/runuser -p -u @RUN_USER@ -- /usr/bin/qbittorrent-nox --profile=@RUN_HOME@/torrents
+ExecStopPost=/usr/local/lib/tunneled-torrents/mgmt-fw.sh down host-mgmt-qb 8080
 ExecStopPost=/usr/sbin/ip link del host-mgmt-qb
 ExecStopPost=/usr/sbin/ip netns del torrent-qb
 Restart=on-failure

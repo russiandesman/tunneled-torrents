@@ -87,7 +87,10 @@ mkdir -p /etc/tunneled-torrents
 grep -vE '^[[:space:]]*(Address|DNS)[[:space:]]*=' "$AWG_CONF" > /etc/tunneled-torrents/vps.conf
 chmod 600 /etc/tunneled-torrents/vps.conf
 
+install -D -m 755 "$SRC/mgmt-fw.sh" /usr/local/lib/tunneled-torrents/mgmt-fw.sh
+
 for ns in torrent-qb torrent-tr; do
+    mkdir -p "/etc/netns/$ns"
     echo "nameserver 9.9.9.9" > "/etc/netns/$ns/resolv.conf"
 done
 
